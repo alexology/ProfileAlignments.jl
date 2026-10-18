@@ -1,6 +1,9 @@
 const PROTEIN_ALPHABET=collect("ARNDCQEGHILKMFPSTWYVBZX*")
+# The matrix is baked in at precompilation; recompile whenever the file changes.
+const BLOSUM62_PATH=joinpath(@__DIR__,"..","data","BLOSUM62.tsv")
+include_dependency(BLOSUM62_PATH)
 const BLOSUM62=let
-    lines=readlines(joinpath(@__DIR__,"..","data","BLOSUM62.tsv"))
+    lines=readlines(BLOSUM62_PATH)
     reduce(vcat,[permutedims(parse.(Float64,split(line)[2:end])) for line in lines[2:end]])
 end
 
