@@ -1,9 +1,9 @@
 # ProfileAlignments.jl
 
-Pacchetto indipendente per allineamenti di sequenze e profili, scritto in Julia.
-Julia ≥1.10; usa BioSequences.jl per l'interoperabilità dei tipi biologici,
-senza libreria FFT esterna, eseguibile MAFFT, R o servizio remoto. AASV lo usa
-come motore di allineamento.
+Standalone package for sequence and profile alignment, written in Julia.
+Julia ≥1.10; it uses BioSequences.jl for interoperability with biological
+types, with no external FFT library, MAFFT executable, R or remote service.
+AASV uses it as its alignment engine.
 
 ```julia
 using Pkg
@@ -17,7 +17,7 @@ result = align_sequences(records)
 write_fasta(result, "aligned.fasta")
 ```
 
-Da questa cartella, il pacchetto si può usare e testare autonomamente:
+From this directory, the package can be used and tested on its own:
 
 ```powershell
 julia --project=. examples/protein_alignment.jl
@@ -25,76 +25,77 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 julia -t auto --project=. benchmark/threading.jl
 ```
 
-## Algoritmo
+## Algorithm
 
-Il disegno segue la famiglia di strategie progressive e iterative descritta
-negli [algoritmi MAFFT](https://mafft.cbrc.jp/alignment/software/algorithms/algorithms.html).
-È una nuova implementazione, con scelte e parametri propri.
+The design follows the family of progressive and iterative strategies
+described in the [MAFFT algorithms](https://mafft.cbrc.jp/alignment/software/algorithms/algorithms.html).
+It is a new implementation, with its own choices and parameters.
 
-1. Collassa le sequenze identiche, conservando i nomi originali.
-2. Stima le distanze con conteggi k-mer nell'alfabeto proteico ridotto a sei
-   gruppi Dayhoff. Usa la correzione per lunghezza documentata da MAFFT.
-3. Costruisce un albero guida UPGMA deterministico. È disponibile anche
-   `linkage=:mixed`, con miscela di distanza minima e media (`mix=0.1`).
-4. Allinea progressivamente i profili seguendo l'albero. I punteggi sono
-   medie pesate BLOSUM62 e i costi dei gap sono affini.
-5. Ricostruisce opzionalmente l'albero dalle distanze nell'MSA e ripete
-   l'allineamento. Mantiene il nuovo MSA se migliora il punteggio.
-6. Raffina il risultato separando i gruppi sui rami dell'albero e riallineandoli.
-   Accetta soltanto miglioramenti del punteggio esatto sum-of-pairs pesato.
-7. Ripristina duplicati, identificativi e ordine iniziale. I duplicati dividono
-   il peso del loro rappresentante, evitando di sovrappesare copie identiche.
+1. Collapses identical sequences, keeping the original names.
+2. Estimates distances from k-mer counts in the protein alphabet reduced to six
+   Dayhoff groups, using the length correction documented by MAFFT.
+3. Builds a deterministic UPGMA guide tree. `linkage=:mixed` is also
+   available, mixing minimum and average distance (`mix=0.1`).
+4. Aligns the profiles progressively along the tree. Scores are weighted
+   BLOSUM62 averages and gap costs are affine.
+5. Optionally rebuilds the tree from the distances in the MSA and repeats the
+   alignment, keeping the new MSA if it improves the score.
+6. Refines the result by splitting the groups at the tree branches and
+   realigning them. Only improvements of the exact weighted sum-of-pairs score
+   are accepted.
+7. Restores duplicates, identifiers and the original order. Duplicates share
+   the weight of their representative, so identical copies are not overweighted.
 
-`sequence_weighting=:tree` usa pesi derivati dalle lunghezze dei rami divise
-tra le foglie discendenti; `:uniform` assegna lo stesso peso ai rappresentanti.
-I pesi rimangono fissi durante il confronto dei candidati e il raffinamento.
+`sequence_weighting=:tree` uses weights derived from branch lengths divided
+among the descendant leaves; `:uniform` gives every representative the same
+weight. Weights stay fixed while candidates are compared and during refinement.
 
 ## API
 
-| Funzione / tipo | Uso |
+| Function / type | Use |
 |---|---|
-| `Sequence(id, sequence)` | sequenza con identificativo |
-| `Alignment(records; weights=...)` | profilo rettangolare con pesi positivi normalizzati |
-| `ScoringModel(...)` | matrice, penalità e trattamento delle estremità |
-| `pairalign(a, b; model=...)` | allineamento affine di due sequenze, risultato `.alignment` e `.score` |
-| `merge_profiles(a, b; model=...)` | fusione di due profili con conservazione delle colonne |
-| `align_sequences(records; ...)` | MSA progressivo e raffinato |
-| `align_sequence_sets(groups; ...)` | allineamento parallelo di insiemi indipendenti |
-| `refine_alignment(alignment; ...)` | raffinamento di un MSA esistente |
-| `alignment_score(alignment; model=...)` | punteggio affine sum-of-pairs pesato |
-| `kmer_distances(records; ...)` | distanze iniziali approssimate |
-| `guide_tree(distances; ...)` | albero guida |
-| `fft_lags(a, b; ...)`, `fft_anchors(a, b; ...)` | diagonali candidate e catena di ancore |
-| `read_fasta`, `write_fasta`, `align_fasta` | input/output e flusso FASTA completo |
+| `Sequence(id, sequence)` | sequence with an identifier |
+| `Alignment(records; weights=...)` | rectangular profile with normalised positive weights |
+| `ScoringModel(...)` | matrix, penalties and end handling |
+| `pairalign(a, b; model=...)` | affine alignment of two sequences, result `.alignment` and `.score` |
+| `merge_profiles(a, b; model=...)` | merge of two profiles preserving their columns |
+| `align_sequences(records; ...)` | progressive and refined MSA |
+| `align_sequence_sets(groups; ...)` | parallel alignment of independent sets |
+| `refine_alignment(alignment; ...)` | refinement of an existing MSA |
+| `alignment_score(alignment; model=...)` | weighted affine sum-of-pairs score |
+| `kmer_distances(records; ...)` | approximate initial distances |
+| `guide_tree(distances; ...)` | guide tree |
+| `fft_lags(a, b; ...)`, `fft_anchors(a, b; ...)` | candidate diagonals and anchor chain |
+| `read_fasta`, `write_fasta`, `align_fasta` | FASTA input/output and complete FASTA workflow |
 
-`Sequence`, `pairalign` e `align_sequences` accettano sia stringhe sia
-`BioSequence`, compresi `LongAA`, `LongDNA{2}` e `LongDNA{4}`. Al confine del
-motore i simboli vengono convertiti una sola volta nella rappresentazione ASCII
-usata dai cicli DP ottimizzati; i risultati conservano quindi l'API storica a
-stringhe. L'alfabeto BioSequences riconosce anche `O`, `U` e `J`, ma il modello
-BLOSUM62 predefinito continua a rifiutarli perché non possiede punteggi definiti.
+`Sequence`, `pairalign` and `align_sequences` accept both strings and
+`BioSequence` values, including `LongAA`, `LongDNA{2}` and `LongDNA{4}`. At the
+engine boundary, symbols are converted once into the ASCII representation used
+by the optimised DP loops; results therefore keep the historical string API.
+The BioSequences alphabet also recognises `O`, `U` and `J`, but the default
+BLOSUM62 model still rejects them because it has no defined scores for them.
 
 ```julia
-# Sequenza corta inserita in un riferimento: solo i gap terminali della query
-# sono gratuiti. La sequenza query è sempre il primo argomento.
+# Short sequence inserted into a reference: only the query's terminal gaps
+# are free. The query sequence is always the first argument.
 model = ScoringModel(mode=:query)
 pair = pairalign("DEFGHIK", "ACDEFGHIKLMNPQ"; model)
 
-# DNA con match/mismatch scalari, senza reverse complement automatico.
+# DNA with scalar match/mismatch, no automatic reverse complement.
 dna = align_sequences(["ACGTACGT", "CGTAC", "ACGTTACGT"];
                       model=ScoringModel(alphabet=:dna))
 
-# Traccia dei punteggi dei soli candidati accettati.
+# Trace of the scores of accepted candidates only.
 trace = align_sequences(records; retree=2, max_iterations=5,
                         return_trace=true)
 trace.scores
 trace.alignment
 ```
 
-### Strategie di calcolo
+### Computation strategies
 
-`align_sequences` accetta preset espliciti. Il default resta `:accurate`,
-quindi l'aggiornamento non cambia automaticamente l'algoritmo:
+`align_sequences` accepts explicit presets. The default remains `:accurate`,
+so upgrading does not change the algorithm automatically:
 
 ```julia
 accurate = align_sequences(records; strategy=:accurate)
@@ -103,116 +104,116 @@ large    = align_sequences(records; strategy=:large)
 automatic = align_sequences(records; strategy=:auto)
 ```
 
-- `:accurate`: due passaggi dell'albero, due cicli di raffinamento, DP completa;
-- `:balanced`: un albero, un ciclo di raffinamento, ancore FFT;
-- `:large`: un albero, nessun raffinamento globale, ancore FFT.
-- `:auto`: sceglie i tre preset a 100 e 500 sequenze distinte; le soglie si
-  modificano con `strategy_thresholds=(accurate_max, balanced_max)`.
+- `:accurate`: two tree passes, two refinement cycles, full DP;
+- `:balanced`: one tree, one refinement cycle, FFT anchors;
+- `:large`: one tree, no global refinement, FFT anchors;
+- `:auto`: picks among the three presets at 100 and 500 distinct sequences; the
+  thresholds are changed with `strategy_thresholds=(accurate_max, balanced_max)`.
 
-`retree`, `max_iterations` e `anchors`, se specificati, prevalgono sul preset.
-Le strategie FFT sono euristiche e possono produrre un allineamento differente.
-I tipi `AccurateStrategy`, `BalancedStrategy` e `LargeStrategy` selezionano lo
-stesso comportamento tramite dispatch.
+`retree`, `max_iterations` and `anchors`, when given, take precedence over the
+preset. The FFT strategies are heuristic and may produce a different alignment.
+The types `AccurateStrategy`, `BalancedStrategy` and `LargeStrategy` select the
+same behaviour through dispatch.
 
-Per molti insiemi indipendenti, `align_sequence_sets` distribuisce gli insiemi
-tra task Julia preservando l'ordine dei risultati. Con più insiemi assegna un
-thread a ciascun allineamento, evitando parallelismo annidato; con un solo
-insieme usa l'intero budget di thread.
+For many independent sets, `align_sequence_sets` distributes the sets across
+Julia tasks while preserving the order of the results. With several sets it
+assigns one thread to each alignment, avoiding nested parallelism; with a
+single set it uses the whole thread budget.
 
-Il calcolo usa i thread Julia disponibili per default (`threads=:auto`). Avvia
-Julia con `julia -t auto` oppure imposta `JULIA_NUM_THREADS` per abilitarne più
-di uno. `threads=1` forza l'esecuzione seriale; un intero positivo limita il
-numero di thread usati dal pacchetto. Le distanze k-mer, le distanze ricavate
-dall'MSA e i punteggi pairwise vengono distribuiti dinamicamente. I due rami
-indipendenti dell'albero guida vengono allineati in parallelo con un budget di
-task limitato. L'ordine delle riduzioni e delle decisioni di raffinamento resta
-fisso, quindi lo stesso input produce lo stesso allineamento e gli stessi
-punteggi con `threads=1` e `threads=:auto`.
+By default the computation uses the available Julia threads
+(`threads=:auto`). Start Julia with `julia -t auto` or set `JULIA_NUM_THREADS`
+to enable more than one. `threads=1` forces serial execution; a positive
+integer limits the number of threads used by the package. K-mer distances,
+distances derived from the MSA and pairwise scores are distributed
+dynamically. The two independent branches of the guide tree are aligned in
+parallel with a bounded task budget. The order of reductions and refinement
+decisions stays fixed, so the same input produces the same alignment and the
+same scores with `threads=1` and `threads=:auto`.
 
-Il guadagno dipende dalla forma dell'albero, dalla lunghezza e dal numero delle
-sequenze. Gli ultimi merge del progressivo hanno dipendenze inevitabilmente
-seriali; per questo non ci si deve attendere uno speedup proporzionale ai core.
-`benchmark/threading.jl [numero_sequenze] [lunghezza]` confronta le due modalità
-sulla macchina corrente senza dipendenze di benchmark aggiuntive.
-`benchmark/scaling.jl [dimensioni...]` confronta i tre preset e riporta tempo,
-allocazioni e larghezza finale.
+The gain depends on the shape of the tree and on the length and number of the
+sequences. The last merges of the progressive stage have inherently serial
+dependencies, so do not expect a speed-up proportional to the number of cores.
+`benchmark/threading.jl [number_of_sequences] [length]` compares the two modes
+on the current machine without additional benchmark dependencies.
+`benchmark/scaling.jl [sizes...]` compares the three presets and reports time,
+allocations and final width.
 
-## Rappresentazione e memoria
+## Representation and memory
 
-L'API pubblica conserva `Sequence` e FASTA come stringhe ASCII. I kernel interni
-leggono direttamente i `codeunits` `UInt8`, senza copiare i residui in matrici
-`Char`. Output e colonne filtrate sono costruiti in buffer di byte di dimensione
-esatta.
+The public API keeps `Sequence` and FASTA as ASCII strings. The internal
+kernels read the `UInt8` `codeunits` directly, without copying the residues
+into `Char` matrices. Outputs and filtered columns are built in byte buffers of
+exact size.
 
-I k-mer comuni sono codificati senza collisioni in `UInt64` (base 7 per i sei
-gruppi Dayhoff, base 5 per DNA); valori di `k` troppo grandi usano il percorso
-generico a tuple. La costruzione UPGMA e la cache dei punteggi usano matrici
-simmetriche compattate con diagonale implicita. Le modalità terminali del DP
-sono parametri di tipo di `ScoringModel`, così Julia compila kernel distinti
-per allineamento globale, overlap e query. La FFT radix-2 resta Julia puro e
-riusa i buffer tra i canali.
+Common k-mers are encoded without collisions in `UInt64` (base 7 for the six
+Dayhoff groups, base 5 for DNA); values of `k` that are too large use the
+generic tuple path. UPGMA construction and the score cache use packed
+symmetric matrices with an implicit diagonal. The DP end modes are type
+parameters of `ScoringModel`, so Julia compiles separate kernels for global,
+overlap and query alignment. The radix-2 FFT remains pure Julia and reuses
+buffers across channels.
 
-`trace.tree` indicizza i rappresentanti unici elencati in `trace.representatives`;
-il risultato conserva tutte le sequenze originali. `trace.scores` riporta
-i punteggi del risultato completo, incluso il termine costante dei duplicati.
+`trace.tree` indexes the unique representatives listed in
+`trace.representatives`; the result keeps all the original sequences.
+`trace.scores` reports the scores of the complete result, including the
+constant term from the duplicates.
 
-Per `ScoringModel`, le modalità sono `:global` (penalizza tutte le estremità),
-`:overlap` (estremità gratuite da entrambi i lati, default) e `:query`.
-Quest'ultima vale per `pairalign` e `merge_profiles`, non per MSA/raffinamento.
-Un gap di lunghezza L costa **gap_open + (L−1) × gap_extend**. Default proteici:
+For `ScoringModel`, the modes are `:global` (penalises all ends), `:overlap`
+(free ends on both sides, the default) and `:query`. The latter applies to
+`pairalign` and `merge_profiles`, not to MSA/refinement.
+A gap of length L costs **gap_open + (L−1) × gap_extend**. Protein defaults:
 BLOSUM62, `gap_open=-10`, `gap_extend=-1`, `terminal_gap=0`. DNA:
-`match=2`, `mismatch=-3`; `N` ha punteggio zero. Le altre ambiguità DNA
-seguono i punteggi scalari; non vengono espanse in probabilità IUPAC.
-È possibile passare `matrix` e `symbols` personalizzati; la matrice deve essere
-finita e simmetrica. Proteine: 20 residui standard, `B`, `Z`, `X` e `*`.
+`match=2`, `mismatch=-3`; `N` scores zero. Other DNA ambiguity codes follow
+the scalar scores; they are not expanded into IUPAC probabilities.
+Custom `matrix` and `symbols` can be passed; the matrix must be finite and
+symmetric. Proteins: the 20 standard residues, `B`, `Z`, `X` and `*`.
 
-## FFT opzionale
+## Optional FFT
 
 ```julia
 fast = align_sequences(records; anchors=:fft, anchor_window=12)
 ```
 
-Una FFT radix-2 Julia calcola le correlazioni delle proprietà volume/polarità
-normalizzate per le proteine, secondo il principio del
-[lavoro MAFFT del 2002](https://pmc.ncbi.nlm.nih.gov/articles/PMC135756/).
-Per DNA si usano quattro canali indicatori. Tra i picchi di correlazione vengono
-cercate finestre ad alta identità; una catena monotona dei loro centri divide
-la matrice in blocchi più piccoli. In assenza di ancore viene usato il DP completo.
+A radix-2 Julia FFT computes the correlations of the normalised
+volume/polarity properties for proteins, following the principle of the
+[2002 MAFFT paper](https://pmc.ncbi.nlm.nih.gov/articles/PMC135756/).
+For DNA, four indicator channels are used. High-identity windows are searched
+between the correlation peaks; a monotone chain of their centres splits the
+matrix into smaller blocks. When there are no anchors, full DP is used.
 
-Questa accelerazione **forza le corrispondenze delle ancore** e può perdere
-allineamenti migliori. È disabilitata per default. Non riproduce il metodo
-di selezione dei segmenti o il sistema di punteggio esatto di MAFFT.
-I parametri non sono intercambiabili con `--op`, `--ep` e `--maxiterate`.
+This acceleration **forces the anchor matches** and may miss better
+alignments. It is disabled by default. It does not reproduce MAFFT's segment
+selection method or its exact scoring system. The parameters are not
+interchangeable with `--op`, `--ep` and `--maxiterate`.
 
-## Correttezza e limiti
+## Correctness and limitations
 
-- L'allineamento affine tra due sequenze è verificato contro l'enumerazione
-  indipendente di tutti gli allineamenti di piccoli input, in tutte e tre
-  le modalità terminali. La suite verifica anche FFT contro trasformate e
-  correlazioni dirette, colonne dei profili, duplicati, determinismo e
-  monotonicità del raffinamento.
-- Il DP tra profili usa il prodotto delle frequenze pesate per le sostituzioni
-  e l'occupazione delle colonne per i gap. È un'approssimazione del problema
-  affine sum-of-pairs: non garantisce il migliore allineamento globale di profili.
-  Il raffinamento usa invece il punteggio affine effettivo delle coppie, ignorando
-  le colonne in cui entrambe le sequenze hanno un gap.
-- Con DP completo, tempo O(L₁×L₂) e memoria di traceback O(L₁×L₂);
-  i punteggi intermedi usano vettori a memoria O(L₁), oltre ai profili.
-  `max_cells=100_000_000` limita le celle del confronto, o del blocco più grande
-  quando si usano ancore. Albero e distanze richiedono memoria O(N²);
-  la coda delle distanze rende la costruzione UPGMA O(N² log N). Il costo del
-  raffinamento dipende dalle bipartizioni e dalle coppie che le attraversano;
-  `max_iterations=0` lo disabilita.
-- Non implementa PartTree, punteggi di consistenza L/G/E-INS-i, SIMD o
-  allineamento strutturale dell'RNA. Non è un clone completo
-  di MAFFT e non ne è dimostrata l'equivalenza biologica o prestazionale.
-- I controlli attuali sono algoritmici e su dati sintetici. Prima dell'uso
-  scientifico definitivo sono necessari benchmark di allineamenti reali
-  e un confronto sull'effetto delle scelte di allineamento in AASV.
+- Pairwise affine alignment is checked against an independent enumeration of
+  all alignments of small inputs, in all three end modes. The suite also checks
+  the FFT against direct transforms and correlations, profile columns,
+  duplicates, determinism and monotonicity of refinement.
+- Profile-to-profile DP uses the product of weighted frequencies for
+  substitutions and column occupancy for gaps. This approximates the affine
+  sum-of-pairs problem: it does not guarantee the best global profile
+  alignment. Refinement instead uses the actual affine pair score, ignoring
+  columns in which both sequences have a gap.
+- With full DP, time is O(L₁×L₂) and traceback memory is O(L₁×L₂);
+  intermediate scores use O(L₁) vectors, in addition to the profiles.
+  `max_cells=100_000_000` caps the cells of the comparison, or of the largest
+  block when anchors are used. Tree and distances require O(N²) memory;
+  the distance queue makes UPGMA construction O(N² log N). The cost of
+  refinement depends on the bipartitions and on the pairs crossing them;
+  `max_iterations=0` disables it.
+- It does not implement PartTree, L/G/E-INS-i consistency scores, SIMD or
+  structural RNA alignment. It is not a complete clone of MAFFT, and neither
+  biological nor performance equivalence with MAFFT has been demonstrated.
+- The current checks are algorithmic and use synthetic data. Before final
+  scientific use, benchmarks on real alignments and an assessment of how
+  alignment choices affect AASV are needed.
 
-Licenza GPL ≥2, testo in `COPYING`. Implementazione indipendente basata
-su descrizioni pubblicate; nessun sorgente MAFFT copiato. La matrice BLOSUM62
-è il dato di sostituzione aminoacidica della versione Biostrings del confronto
-R, in ordine ARNDCQEGHILKMFPSTWYVBZX*. Per `B`, `Z` e `X` si usa quindi la
-convenzione Biostrings; `X` contro un residuo ha punteggio −1. Vedere
-`THIRD_PARTY_NOTICES.md` per provenienza e riferimenti.
+Licensed under GPL ≥2, text in `COPYING`. Independent implementation based on
+published descriptions; no MAFFT source code was copied. The BLOSUM62 matrix is
+the amino acid substitution data from the Biostrings version used in the R
+comparison, in the order ARNDCQEGHILKMFPSTWYVBZX*. `B`, `Z` and `X` therefore
+follow the Biostrings convention; `X` against any residue scores −1. See
+`THIRD_PARTY_NOTICES.md` for provenance and references.
