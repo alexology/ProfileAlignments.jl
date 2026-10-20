@@ -146,25 +146,22 @@ function subset(a::Alignment,indices)
     trim_columns(Alignment(a.records[indices];weights=a.weights[indices]))
 end
 
-"""Read FASTA and preserve full headers, record order and gap columns."""
+"""Read FASTA (FASTX.jl) and preserve full headers, record order and gap columns.
+Malformed files, including an empty record directly followed by another header,
+raise an `ArgumentError`."""
 function read_fasta(path::AbstractString)
     records=Sequence[]
-    id=nothing
-    buffer=IOBuffer()
-    open(path) do io
-        for line in eachline(io)
-            line=strip(line)
-            isempty(line) && continue
-            if startswith(line,">")
-                isnothing(id) || push!(records,Sequence(id,String(take!(buffer))))
-                id=strip(line[2:end])
-            else
-                isnothing(id) && throw(ArgumentError("FASTA sequence precedes header in $path"))
-                print(buffer,line)
-            end
+    reader=FASTX.FASTAReader(open(path);copy=false)
+    try
+        for rec in reader
+            push!(records,Sequence(strip(FASTX.description(rec)),FASTX.sequence(String,rec)))
         end
+    catch e
+        e isa ErrorException || e isa EOFError || rethrow()
+        throw(ArgumentError("Invalid FASTA $path: $(sprint(showerror,e))"))
+    finally
+        close(reader)
     end
-    isnothing(id) || push!(records,Sequence(id,String(take!(buffer))))
     validate_ids(records)
     records
 end

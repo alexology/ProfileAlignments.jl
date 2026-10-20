@@ -247,5 +247,9 @@ end
         @test getfield.(read_fasta(output),:sequence)==getfield.(result.records,:sequence)
         write(path,"ACGT\n")
         @test_throws ArgumentError read_fasta(path)
+        write(path,">a\n>b\nACGT\n")
+        @test_throws ArgumentError read_fasta(path)
+        write(path,"> one id \r\nac-g\r\n\r\nt n\r\n>two\r\nCC\r\n")
+        @test [(r.id,r.sequence) for r in read_fasta(path)]==[("one id","AC-GTN"),("two","CC")]
     end
 end

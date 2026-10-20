@@ -2,7 +2,8 @@
 
 Standalone package for sequence and profile alignment, written in Julia.
 Julia ≥1.10; it uses BioSequences.jl for interoperability with biological
-types, with no external FFT library, MAFFT executable, R or remote service.
+types and FASTX.jl to read FASTA files, with no external FFT library, MAFFT
+executable, R or remote service.
 AASV uses it as its alignment engine.
 
 ```julia

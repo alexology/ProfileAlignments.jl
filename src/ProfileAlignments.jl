@@ -1,6 +1,7 @@
 module ProfileAlignments
 
 import BioSequences
+import FASTX
 
 export Sequence, Alignment, ScoringModel, GuideTree, AlignmentStrategy,
     AccurateStrategy, BalancedStrategy, LargeStrategy, AutoStrategy, read_fasta, write_fasta,
